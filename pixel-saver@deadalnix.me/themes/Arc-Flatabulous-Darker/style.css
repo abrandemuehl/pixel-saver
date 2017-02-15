@@ -1,0 +1,69 @@
+/* The box-bin element holds the button-box element which holds each window-button.
+ *
+ * Control spacing between each button via .button-box.
+ */
+.box-bin { 
+    border-width: 0px;
+    padding: 0px;
+    margin: 0px;
+}
+
+.button-box {
+    margin: 0px;
+    spacing: 4px;
+}
+
+/* The style for each individual window button */
+.window-button {
+    width: 24px;
+    height: 28px;
+}
+
+/* The style for the window button when hovered over */
+.window-button:hover {
+}
+
+/* Here you can style each individual button. You need to define style classes
+ * ".minimize", ".maximize" and ".close".
+ * You can additionally define styles for the :hover and :active pseudo classes
+ * if you wish.
+ * See the 'Radiance' style.css for an example of this.
+ */
+/* Style for the minimize button */
+.minimize {
+    background-image: url('titlebutton-minimize.png');
+}
+
+.minimize:hover {
+    background-image: url('titlebutton-minimize-hover.png');
+}
+
+.minimize:active {
+    background-image: url('titlebutton-minimize-active.png');
+}
+
+/* Style for the maximize button */
+.maximize {
+    background-image: url('titlebutton-maximize.png');
+}
+
+.maximize:hover {
+    background-image: url('titlebutton-maximize-hover.png');
+}
+
+.maximize:active {
+    background-image: url('titlebutton-maximize-active.png');
+}
+
+/* Style for the close button */
+.close {
+    background-image: url('titlebutton-close.png');
+}
+
+.close:hover {
+    background-image: url('titlebutton-close-hover.png');
+}
+
+.close:active {
+    background-image: url('titlebutton-close-active.png');
+}
