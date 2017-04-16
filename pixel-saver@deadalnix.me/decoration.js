@@ -3,8 +3,11 @@ const Main = imports.ui.main;
 const Mainloop = imports.mainloop;
 const Meta = imports.gi.Meta;
 const Util = imports.misc.util;
-const Me = imports.misc.extensionUtils.getCurrentExtension();
-const Utils = Me.imports.utils;
+const Main = imports.ui.main;
+
+const ExtensionUtils = imports.misc.extensionUtils;
+const Me = ExtensionUtils.getCurrentExtension();
+const UtilMe = Me.imports.util;
 
 function LOG(message) {
 	// log("[pixel-saver]: " + message);
@@ -120,7 +123,6 @@ function guessWindowXID(win) {
 
 const WindowState = {
 	DEFAULT: 'default',
-	HIDE_TITLEBAR: 'hide_titlebar',
 	UNDECORATED: 'undecorated',
 	UNKNOWN: 'unknown'
 }
@@ -135,11 +137,7 @@ function getOriginalState(win) {
 	if (win._pixelSaverOriginalState !== undefined) {
 		return win._pixelSaverOriginalState;
 	}
-	
-	if (!win.decorated) {
-		return win._pixelSaverOriginalState = WindowState.UNDECORATED;
-	}
-	
+
 	let id = guessWindowXID(win);
 	let cmd = 'xprop -id ' + id;
 	LOG(cmd);
@@ -154,13 +152,13 @@ function getOriginalState(win) {
 	let m = str.match(/^_PIXEL_SAVER_ORIGINAL_STATE\(CARDINAL\) = ([0-9]+)$/m);
 	if (m) {
 		return win._pixelSaverOriginalState = !!m[1]
-			? WindowState.HIDE_TITLEBAR
+			? WindowState.UNDECORATED
 			: WindowState.DEFAULT;
 	}
 	
-	m = str.match(/^_GTK_HIDE_TITLEBAR_WHEN_MAXIMIZED(\(CARDINAL\))? = ([0-9]+)$/m);
+	m = str.match(/^_MOTIF_WM_HINTS(\(CARDINAL\))? = ([0-9]+) ([0-9]+) ([0-9]+) ([0-9]+) ([0-9]+)$/m);
 	if (m) {
-		let state = !!m[1];
+		let state = !!m[3];
 		cmd = ['xprop', '-id', id,
 		      '-f', '_PIXEL_SAVER_ORIGINAL_STATE', '32c',
 		      '-set', '_PIXEL_SAVER_ORIGINAL_STATE',
@@ -171,6 +169,10 @@ function getOriginalState(win) {
 			? WindowState.HIDE_TITLEBAR
 			: WindowState.DEFAULT;
 	}
+
+    if(!win.decorated) {
+        return win._pixelSaverOriginalState = WindowState.UNDECORATED;
+    }
 	
 	WARN("Can't find original state for " + win.title + " with id " + id);
 	
@@ -180,35 +182,37 @@ function getOriginalState(win) {
 	return win._pixelSaverOriginalState = WindowState.DEFAULT;
 }
 
-/**
- * Tells the window manager to hide the titlebar on maximised windows.
- *
- * Does this by setting the _GTK_HIDE_TITLEBAR_WHEN_MAXIMIZED hint - means
- * I can do it once and forget about it, rather than tracking maximize/unmaximize
- * events.
- *
- * **Caveat**: doesn't work with Ubuntu's Ambiance and Radiance window themes -
- * my guess is they don't respect or implement this property.
- * 
- * I don't know how to read the inital value, so I'm not sure how to resore it.
- *
- * @param {Meta.Window} win - window to set the HIDE_TITLEBAR_WHEN_MAXIMIZED property of.
- * @param {boolean} hide - whether to hide the titlebar or not.
- */
+function updateHideTitlebar() {
+    Mainloop.idle_add(function () {
+        // If we have a window to control, then we undecorate
+        let hide = false;
+        let win = UtilMe.getWindow();
+
+		if (settings.get_boolean('only-main-monitor'))
+			hide = win.is_on_primary_monitor();
+        if (win) {
+            let state = getOriginalState(win);
+            if(state === WindowState.DEFAULT) {
+                hide = (win.get_maximized() === Meta.MaximizeFlags.BOTH);
+                setHideTitlebar(win, hide);
+            }
+        }
+        return false;
+    });
+}
+
+
 function setHideTitlebar(win, hide) {
-	LOG('setHideTitlebar: ' + win.get_title() + ': ' + hide);
-	
-	// Make sure we save the state before altering it.
-	getOriginalState(win);
-	
-	/**
-	 * Undecorate with xprop. Use _GTK_HIDE_TITLEBAR_WHEN_MAXIMIZED.
-	 * See (eg) mutter/src/window-props.c
-	 */
-	let cmd = ['xprop', '-id', guessWindowXID(win),
-	           '-f', '_GTK_HIDE_TITLEBAR_WHEN_MAXIMIZED', '32c',
-	           '-set', '_GTK_HIDE_TITLEBAR_WHEN_MAXIMIZED',
-	           (hide ? '0x1' : '0x0')];
+    // Make sure we save the original state before changing it
+    getOriginalState(win);
+
+    let cmd = ['xprop', '-id', guessWindowXID(win),
+	        '-f', '_MOTIF_WM_HINTS', '32c',
+	        '-set', '_MOTIF_WM_HINTS',
+	        (hide ? '0x2, 0x0, 0x0, 0x0, 0x0' : '0x2, 0x0, 0x1, 0x0, 0x0')];
+
+
+
 	LOG(cmd.join(' '));
 	
 	// Run xprop
@@ -218,23 +222,33 @@ function setHideTitlebar(win, hide) {
 		null,
 		GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD,
 		null);
-	
-	// After xprop completes, unmaximize and remaximize any window
-	// that is already maximized. It seems that setting the xprop on
-	// a window that is already maximized doesn't actually take
-	// effect immediately but it needs a focuse change or other
-	// action to force a relayout. Doing unmaximize and maximize
-	// here seems to be an uninvasive way to handle this. This needs
-	// to happen _after_ xprop completes.
-	GLib.child_watch_add(GLib.PRIORITY_DEFAULT, pid, function () {
-		const MAXIMIZED = Meta.MaximizeFlags.BOTH;
-		let flags = win.get_maximized();
-		if (flags == MAXIMIZED) {
-			win.unmaximize(MAXIMIZED);
-			win.maximize(MAXIMIZED);
-		}
-	});
+
+    // Remove the _MOTIF_WM_HINTS xprop so that we don't confuse ourselves if
+    // the shell restarts
+    GLib.child_watch_add(GLib.PRIORITY_DEFAULT, pid, function () {
+        let cmd = ['xprop', '-id', guessWindowXID(win),
+        '-remove', '_MOTIF_WM_HINTS'];
+
+        LOG(cmd.join(' '));
+
+        // Run xprop
+        [success, pid] = GLib.spawn_async(
+                null,
+                cmd,
+                null,
+                GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD,
+                null);
+
+
+        // After xprop completes, activate the focused window. For some reason
+        // applying the change causes the window to not be focused when it
+        // maximizes
+        GLib.child_watch_add(GLib.PRIORITY_DEFAULT, pid, function () {
+            Main.activateWindow(win);
+        });
+    });
 }
+
 
 /**** Callbacks ****/
 /**
@@ -293,10 +307,7 @@ function onWindowAdded(ws, win, retry) {
 		}
 		
 		LOG('onWindowAdded: ' + win.get_title());
-		let hide = true;
-		if (settings.get_boolean('only-main-monitor'))
-			hide = win.is_on_primary_monitor();
-		setHideTitlebar(win, hide);
+		updateHideTitlebar();
 		return false;
 	});
 	
@@ -362,6 +373,8 @@ function windowEnteredMonitor(metaScreen, monitorIndex, metaWin) {
  */
 function init() {}
 
+let wmCallbackIDs = [];
+
 let changeWorkspaceID = 0;
 let windowEnteredID = 0;
 function enable() {
@@ -371,6 +384,20 @@ function enable() {
 	// Connect events
 	changeWorkspaceID = global.screen.connect('notify::n-workspaces', onChangeNWorkspaces);
 	windowEnteredID   = global.screen.connect('window-entered-monitor', windowEnteredMonitor);
+
+	let wm = global.window_manager;
+	wmCallbackIDs.push(wm.connect('switch-workspace', updateHideTitlebar));
+	wmCallbackIDs.push(wm.connect('minimize', updateHideTitlebar));
+	wmCallbackIDs.push(wm.connect('unminimize', updateHideTitlebar));
+    wmCallbackIDs = wmCallbackIDs.concat(UtilMe.onSizeChange(updateHideTitlebar));
+
+    let i = global.screen.n_workspaces;
+    while (i--) {
+        let ws = global.screen.get_workspace_by_index(i);
+        wmCallbackIDs.push(ws.connect('window-added', function () {
+            Mainloop.idle_add(function () { return updateHideTitlebar(); });
+        }));
+    }
 	
 	/**
 	 * Go through already-maximised windows & undecorate.
@@ -402,6 +429,9 @@ function disable() {
 		global.screen.disconnect(windowEnteredID);
 		windowEnteredID = 0;
 	}
+	wmCallbackIDs.forEach(function(id) {
+		global.window_manager.disconnect(id);
+	});
 	
 	cleanWorkspaces();
 	

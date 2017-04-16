@@ -210,8 +210,7 @@ function updateVisibility() {
 		let win = Util.getWindow();
 		if (win) {
             let state = Decorations.getOriginalState(win);
-            if(state !== Decorations.WindowState.UNDECORATED) {
-                LOG("win: " + win.get_title() + ' ' + win.decorated);
+            if(state === Decorations.WindowState.DEFAULT) {
                 visible = (win.get_maximized() === Meta.MaximizeFlags.BOTH);
             } else {
                 visible = false;
