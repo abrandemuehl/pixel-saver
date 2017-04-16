@@ -5,6 +5,7 @@ const MAXIMIZED = Meta.MaximizeFlags.BOTH;
 
 function getWindow() {
 	// get all window in stacking order.
+    return global.display.focus_window;
 	let windows = global.display.sort_windows_by_stacking(
 		global.screen.get_active_workspace().list_windows().filter(function (w) {
 			return w.get_window_type() !== Meta.WindowType.DESKTOP;

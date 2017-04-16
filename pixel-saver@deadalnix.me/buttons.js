@@ -9,6 +9,7 @@ const St = imports.gi.St;
 const ExtensionUtils = imports.misc.extensionUtils;
 const Me = ExtensionUtils.getCurrentExtension();
 const Util = Me.imports.util;
+const Decorations = Me.imports.decoration;
 
 function LOG(message) {
 	// log("[pixel-saver]: " + message);
@@ -208,7 +209,13 @@ function updateVisibility() {
 		visible = false;
 		let win = Util.getWindow();
 		if (win) {
-			visible = win.decorated;
+            let state = Decorations.getOriginalState(win);
+            if(state !== Decorations.WindowState.UNDECORATED) {
+                LOG("win: " + win.get_title() + ' ' + win.decorated);
+                visible = (win.get_maximized() === Meta.MaximizeFlags.BOTH);
+            } else {
+                visible = false;
+            }
 		}
 	}
 	
@@ -251,7 +258,18 @@ function enable() {
 	wmCallbackIDs.push(wm.connect('map', updateVisibility));
 	wmCallbackIDs.push(wm.connect('minimize', updateVisibility));
 	wmCallbackIDs.push(wm.connect('unminimize', updateVisibility));
-	
+
+    wmCallbackIDs.push(global.stage.connect('notify::key-focus', updateVisibility));
+
+    let i = global.screen.n_workspaces;
+    while (i--) {
+        let ws = global.screen.get_workspace_by_index(i);
+        wmCallbackIDs.push(ws.connect('window-added', function () {
+            Mainloop.idle_add(function () { return updateVisibility(); });
+        }));
+    }
+
+
 	wmCallbackIDs = wmCallbackIDs.concat(Util.onSizeChange(updateVisibility));
 	
 	themeCallbackID = Gtk.Settings.get_default().connect('notify::gtk-theme-name', loadTheme);
