@@ -211,7 +211,7 @@ function updateVisibility() {
 		if (win) {
             let state = Decorations.getOriginalState(win);
             if(state === Decorations.WindowState.DEFAULT) {
-                visible = (win.get_maximized() === Meta.MaximizeFlags.BOTH);
+                visible = (win.get_maximized() === Meta.MaximizeFlags.BOTH && !win.minimized);
             } else {
                 visible = false;
             }
