@@ -3,11 +3,11 @@ const Main = imports.ui.main;
 const Mainloop = imports.mainloop;
 const Meta = imports.gi.Meta;
 const Util = imports.misc.util;
-const Main = imports.ui.main;
 
 const ExtensionUtils = imports.misc.extensionUtils;
 const Me = ExtensionUtils.getCurrentExtension();
 const UtilMe = Me.imports.util;
+const Utils = Me.imports.utils;
 
 function LOG(message) {
 	// log("[pixel-saver]: " + message);
